@@ -77,6 +77,16 @@ export class DaynizeVoiceTutor extends HTMLElement {
         this.orb = new AmbientOrb(query('.ambient-orb'));
         this.resize = new ResizeObserver(() => this.resizeCanvas());
         this.resize.observe(this.canvas);
+        const unlockAudio = () => {
+            this.audio.context?.resume().catch(() => { });
+            this.audio.sinkElement?.play().catch(() => { });
+        };
+        // iOS/Android fire 'click' after 'touchend', and on some mobile WebKit
+        // builds resume() only reliably inherits user-activation when it runs
+        // directly inside the touch handler rather than after awaits further
+        // down the call chain, so grab the gesture here as early as possible.
+        this.launch.addEventListener('touchend', unlockAudio, { signal, passive: true });
+        this.startButton.addEventListener('touchend', unlockAudio, { signal, passive: true });
         this.launch.addEventListener('click', () => this.open(), { signal });
         this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); }, { signal });
         this.dialog.addEventListener('click', event => {
@@ -99,7 +109,10 @@ export class DaynizeVoiceTutor extends HTMLElement {
             query('.speaker').title = muted ? '스피커 켜기' : '스피커 끄기';
             query('.speaker img').src = asset(`icons/${muted ? 'volume-x' : 'volume-2'}.svg`);
             if (!muted && this.audio.context) {
-                try { await this.audio.context.resume(); } catch (error) { query('.audio-check').textContent = error.message; }
+                try {
+                    await this.audio.context.resume();
+                    await this.audio.sinkElement?.play();
+                } catch (error) { query('.audio-check').textContent = error.message; }
             }
         }, { signal });
         query('.speed').addEventListener('input', () => {

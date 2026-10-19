@@ -53,7 +53,24 @@ export class AudioEngine extends EventTarget {
             this.outputSamples = new Float32Array(this.outputAnalyser.fftSize);
             this.outputGain = context.createGain();
             this.outputGain.gain.value = this.speakerMuted ? 0 : 1;
-            this.outputAnalyser.connect(this.outputGain).connect(context.destination);
+            this.outputAnalyser.connect(this.outputGain);
+            // iOS Safari (and some Android Chrome builds) route raw AudioContext
+            // output to the call receiver/earpiece while a getUserMedia mic stream
+            // is active. Routing through a real <audio> element forces playback
+            // through the main loudspeaker instead.
+            const sinkDestination = context.createMediaStreamDestination();
+            this.outputGain.connect(sinkDestination);
+            const sinkElement = new Audio();
+            sinkElement.autoplay = true;
+            sinkElement.playsInline = true;
+            sinkElement.setAttribute('playsinline', '');
+            sinkElement.srcObject = sinkDestination.stream;
+            this.sinkElement = sinkElement;
+            try { await sinkElement.play(); } catch { /* unlocked by the next user gesture */ }
+            if (generation !== this.generation) {
+                sinkElement.pause();
+                return;
+            }
             this.microphone = context.createMediaStreamSource(stream);
             this.processor = new AudioWorkletNode(context, 'microphone-pcm', {
                 channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1]
@@ -116,6 +133,7 @@ export class AudioEngine extends EventTarget {
         const context = ownsContext ? new AudioContext({ latencyHint: 'interactive' }) : this.context;
         try {
             await context.resume();
+            if (!ownsContext) await this.sinkElement?.play().catch(() => { });
             if (context.state !== 'running') throw new Error('음성 재생이 차단됐습니다. 브라우저 소리 권한을 확인해주세요.');
             const oscillator = context.createOscillator();
             const gain = context.createGain();
@@ -125,7 +143,10 @@ export class AudioEngine extends EventTarget {
             gain.gain.linearRampToValueAtTime(0.12, now + 0.02);
             gain.gain.setValueAtTime(0.12, now + 0.25);
             gain.gain.linearRampToValueAtTime(0, now + 0.35);
-            oscillator.connect(gain).connect(context.destination);
+            // Reuse the real output sink (the <audio> element routing fix for
+            // iOS earpiece/receiver audio) so the test tone proves the same path
+            // the AI voice will play through, instead of bypassing it.
+            oscillator.connect(gain).connect(ownsContext ? context.destination : this.outputAnalyser);
             await new Promise(resolve => {
                 oscillator.onended = resolve;
                 oscillator.start(now);
@@ -147,7 +168,14 @@ export class AudioEngine extends EventTarget {
     play(data, mimeType = 'audio/pcm;rate=24000') {
         const context = this.context;
         if (!context || context.state === 'closed') return;
-        if (context.state !== 'running') this.emit('blocked');
+        if (context.state !== 'running') {
+            // Middleware: the first audio chunk after a suspend (mobile tab
+            // backgrounding, screen lock, delayed gesture propagation) retries
+            // resume automatically instead of requiring another manual tap.
+            context.resume().catch(() => { });
+            this.sinkElement?.play().catch(() => { });
+            this.emit('blocked');
+        }
         const samples = decodePcm(data);
         if (!samples.length) return;
         const rate = Number(/rate=(\d+)/.exec(mimeType)?.[1] || 24000);
@@ -212,6 +240,11 @@ export class AudioEngine extends EventTarget {
         this.inputAnalyser?.disconnect();
         this.outputAnalyser?.disconnect();
         this.outputGain?.disconnect();
+        if (this.sinkElement) {
+            this.sinkElement.pause();
+            this.sinkElement.srcObject = null;
+        }
+        this.sinkElement = undefined;
         this.stream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
         this.context?.close().catch(() => { });
         this.context = this.stream = this.microphone = this.processor = this.silence = undefined;
