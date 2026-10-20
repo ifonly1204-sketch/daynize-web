@@ -20,13 +20,16 @@ test('trace reports first-audio gaps, relay processing, arrival jitter and turn 
     clock = 700; trace.clientAudio(0.2, 10);
     clock = 900; trace.clientAudio(0.4, 50);
     clock = 1000; trace.modelMessage({ serverContent: { inputTranscription: { text: 'secret words' } } }, 0.1, 0);
+    clock = 1100; trace.modelMessage({ usageMetadata: { totalTokenCount: 4321 } }, 0.1, 0);
     clock = 1600; trace.modelMessage(audioReply, 0.3, 0);
     clock = 2000; trace.close('done');
     const events = parse(lines);
     assert.ok(events.every(event => event.id === 'abc123'));
-    assert.deepEqual(events.find(event => event.event === 'first_audio'), { id: 'abc123', t: 400, event: 'first_audio', sinceKickoffMs: 300, relayForwardMs: 0.5 });
+    assert.deepEqual(events.find(event => event.event === 'first_audio'), { id: 'abc123', t: 400, event: 'first_audio', turn: 1, sinceKickoffMs: 300, relayForwardMs: 0.5 });
     const second = events.filter(event => event.event === 'first_audio')[1];
     assert.equal(second.sinceLastInputTranscriptionMs, 600);
+    assert.equal(second.turn, 2);
+    assert.equal(second.contextTokens, 4321);
     assert.ok(events.some(event => event.event === 'turn_complete'));
     const summary = events.find(event => event.event === 'summary');
     assert.equal(summary.upstreamToClient.relayMaxMs, 1.5);

@@ -23,6 +23,8 @@ function createLatencyTrace({ log = () => { }, now = () => performance.now(), su
     let kickoffAt;
     let inputAt;
     let awaitingAudio = true;
+    let turns = 0;
+    let contextTokens;
     const round = value => Math.round(value * 100) / 100;
 
     const emit = (event, extra = {}) => log(`[latency] ${JSON.stringify({ id, t: stamp(), event, ...extra })}`);
@@ -73,6 +75,8 @@ function createLatencyTrace({ log = () => { }, now = () => performance.now(), su
         modelMessage(message, forwardMs, clientBufferedBytes = 0) {
             const current = now();
             const content = message?.serverContent;
+            // Context size as reported by Gemini; compare against first_audio latency per turn.
+            if (Number.isFinite(message?.usageMetadata?.totalTokenCount)) contextTokens = message.usageMetadata.totalTokenCount;
             if (content?.inputTranscription) inputAt = current;
             if (isModelAudio(message)) {
                 if (lastModelAt !== undefined) window.modelGapMaxMs = Math.max(window.modelGapMaxMs, current - lastModelAt);
@@ -84,6 +88,8 @@ function createLatencyTrace({ log = () => { }, now = () => performance.now(), su
                 if (awaitingAudio) {
                     awaitingAudio = false;
                     emit('first_audio', {
+                        turn: ++turns,
+                        contextTokens,
                         sinceKickoffMs: kickoffAt === undefined ? undefined : Math.round(current - kickoffAt),
                         sinceLastInputTranscriptionMs: inputAt === undefined ? undefined : Math.round(current - inputAt),
                         relayForwardMs: round(forwardMs)
@@ -94,7 +100,7 @@ function createLatencyTrace({ log = () => { }, now = () => performance.now(), su
             if (content?.turnComplete || content?.interrupted) {
                 awaitingAudio = true;
                 lastModelAt = undefined;
-                emit(content.interrupted ? 'interrupted' : 'turn_complete');
+                emit(content.interrupted ? 'interrupted' : 'turn_complete', { turn: turns, contextTokens });
             }
             summarize();
         },
