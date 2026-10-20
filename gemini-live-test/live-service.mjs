@@ -2,7 +2,7 @@ import { createInitSessionMessage } from './lesson-context.mjs';
 
 export const TUTOR_INSTRUCTION = 'You are a warm, patient, and empathetic English conversation tutor for senior learners on Daynize (데이나이즈). Speak clearly, concisely, and encouragingly in a gentle tone. Keep every reply to one or two short sentences, and start right after the learner finishes with a quick natural reaction such as "Aha!", "Oh, I see!" or "Great!". Mix Korean explanations when helpful, but encourage natural English conversation. Stop speaking immediately when the learner starts talking.';
 
-export function createSetup(model = 'gemini-2.5-flash-native-audio-latest', voice = 'Kore', { silenceDurationMs = 450, prefixPaddingMs = 200, systemInstruction = TUTOR_INSTRUCTION } = {}) {
+export function createSetup(model = 'gemini-2.5-flash-native-audio-latest', voice = 'Kore', { silenceDurationMs = 450, prefixPaddingMs = 200, systemInstruction = TUTOR_INSTRUCTION, triggerTokens = 2500, targetTokens = 1500 } = {}) {
     return {
         setup: {
             model: model.startsWith('models/') ? model : `models/${model}`,
@@ -25,12 +25,15 @@ export function createSetup(model = 'gemini-2.5-flash-native-audio-latest', voic
                 }
             },
             sessionResumption: {},
-            contextWindowCompression: { slidingWindow: {} }
+            contextWindowCompression: {
+                triggerTokens: Number(triggerTokens),
+                slidingWindow: { targetTokens: Number(targetTokens) }
+            }
         }
     };
 }
 
-export function createTranscriptionSetup(model = 'gemini-2.5-flash-native-audio-latest', { silenceDurationMs = 500, prefixPaddingMs = 200 } = {}) {
+export function createTranscriptionSetup(model = 'gemini-2.5-flash-native-audio-latest', { silenceDurationMs = 500, prefixPaddingMs = 200, triggerTokens = 2500, targetTokens = 1500 } = {}) {
     return {
         setup: {
             model: model.startsWith('models/') ? model : `models/${model}`,
@@ -49,6 +52,10 @@ export function createTranscriptionSetup(model = 'gemini-2.5-flash-native-audio-
                     prefixPaddingMs,
                     silenceDurationMs: Math.min(1500, silenceDurationMs)
                 }
+            },
+            contextWindowCompression: {
+                triggerTokens: Number(triggerTokens),
+                slidingWindow: { targetTokens: Number(targetTokens) }
             }
         }
     };

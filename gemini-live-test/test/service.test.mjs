@@ -91,12 +91,21 @@ test('setup includes tutor voice and protocol waits for setupComplete', async ()
     assert.equal(setup.setup.realtimeInputConfig.activityHandling, 'START_OF_ACTIVITY_INTERRUPTS');
     assert.equal(setup.setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName, 'Kore');
     assert.match(setup.setup.systemInstruction.parts[0].text, /senior learners/);
-    assert.deepEqual(setup.setup.realtimeInputConfig.automaticActivityDetection, {
+    assert.deepEqual(setup.setup.automaticActivityDetection ?? setup.setup.realtimeInputConfig.automaticActivityDetection, {
         disabled: false,
         startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
         endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
         prefixPaddingMs: 200,
         silenceDurationMs: 450
+    });
+    assert.deepEqual(setup.setup.contextWindowCompression, {
+        triggerTokens: 2500,
+        slidingWindow: { targetTokens: 1500 }
+    });
+    const customSetup = createSetup('gemini-2.5-flash-native-audio-latest', 'Kore', { triggerTokens: 3000, targetTokens: 1800 });
+    assert.deepEqual(customSetup.setup.contextWindowCompression, {
+        triggerTokens: 3000,
+        slidingWindow: { targetTokens: 1800 }
     });
     const service = new LiveService({ endpoint: 'wss://example.test/ws', WebSocketClass: MockSocket });
     const started = service.start();

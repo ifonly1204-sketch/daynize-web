@@ -45,6 +45,8 @@ function createRelayServer(options = {}) {
         if (new URL(origin).origin !== origin || !origin.startsWith('https://')) throw new Error('ALLOWED_ORIGINS must contain exact HTTPS origins.');
     }
     const publicOrigin = options.publicOrigin ?? process.env.PUBLIC_ORIGIN;
+    const triggerTokens = Math.max(500, Number(options.triggerTokens ?? process.env.GEMINI_TRIGGER_TOKENS) || 2500);
+    const targetTokens = Math.max(300, Number(options.targetTokens ?? process.env.GEMINI_TARGET_TOKENS) || 1500);
     const vadSilenceMs = Math.min(1000, Number(options.vadSilenceMs ?? process.env.VAD_SILENCE_MS) || 450);
     const transcriptionSilenceMs = options.transcriptionSilenceMs ?? (Number(process.env.TRANSCRIPTION_VAD_SILENCE_MS) || 500);
     const authorizeRequest = options.authorizeRequest;
@@ -361,10 +363,10 @@ function createRelayServer(options = {}) {
                 if (ended) return stopUpstream();
                 teachingMode = Boolean(teaching) && teaching.normalizeSessionMode(sessionInit.mode) === teaching.SESSION_MODES.TEACHING;
                 if (teachingMode) teachingKickoff = teaching.createTeachingKickoff(sessionInit.context);
-                const setupOptions = { silenceDurationMs: vadSilenceMs };
+                const setupOptions = { silenceDurationMs: vadSilenceMs, triggerTokens, targetTokens };
                 if (teachingMode) setupOptions.systemInstruction = teaching.buildTeachingInstruction(sessionInit.context);
                 const setup = transcriptionOnly
-                    ? createTranscriptionSetup(options.transcriptionLiveModel ?? process.env.GEMINI_TRANSCRIPTION_LIVE_MODEL ?? DEFAULT_MODEL, { silenceDurationMs: transcriptionSilenceMs })
+                    ? createTranscriptionSetup(options.transcriptionLiveModel ?? process.env.GEMINI_TRANSCRIPTION_LIVE_MODEL ?? DEFAULT_MODEL, { silenceDurationMs: transcriptionSilenceMs, triggerTokens, targetTokens })
                     : createSetup(model, requestedVoice, setupOptions);
                 if (resumeHandle) setup.setup.sessionResumption.handle = resumeHandle;
                 upstream.send(JSON.stringify(setup));
